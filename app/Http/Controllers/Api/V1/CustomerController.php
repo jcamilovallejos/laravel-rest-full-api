@@ -2,14 +2,14 @@
 
 namespace App\Http\Controllers\Api\V1;
 
+use App\Filters\V1\CustomersFilter;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\StorecustomerRequest;
 use App\Http\Requests\UpdatecustomerRequest;
-use App\Models\Customer;
-use App\Http\Resources\V1\CustomerResource;
 use App\Http\Resources\V1\CustomerCollection;
-use App\Filters\V1\CustomersFilter;
-use \Illuminate\Http\Request;
+use App\Http\Resources\V1\CustomerResource;
+use App\Models\Customer;
+use Illuminate\Http\Request;
 
 class CustomerController extends Controller
 {
@@ -20,13 +20,18 @@ class CustomerController extends Controller
     {
         $filter = new CustomersFilter();
         $queryItems = $filter->transform($request);
-        if (count($queryItems) == 0) {
-            return new CustomerCollection(Customer::paginate());
-        } else {
-            return new CustomerCollection(Customer::
-                where($queryItems)
-                ->paginate());
-        }
+
+        $includeInvoices = $request->query('includeInvoices');
+
+        $customer = Customer::
+            when($includeInvoices, function($query){
+                return $query->with('invoices');
+            })->
+            when($queryItems, function($query) use($queryItems){
+                return $query->where([$queryItems]);
+            })
+            ->paginate();
+        return new CustomerCollection($customer->appends($request->query()));
     }
     /**
      * Show the form for creating a new resource.
@@ -47,8 +52,12 @@ class CustomerController extends Controller
     /**
      * Display the specified resource.
      */
-    public function show(Customer $customer)
+    public function show(Customer $customer, Request $request)
     {
+        $includeInvoices = $request->query('includeInvoices');
+        $customer = Customer::when($includeInvoices, function($query){
+            return $query->with('invoices');
+        })->find($customer->id);
         return new CustomerResource($customer);
     }
 
